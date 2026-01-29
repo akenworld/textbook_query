@@ -72,17 +72,29 @@ if 'db' not in st.session_state:
     st.session_state.db = None
 if 'versions' not in st.session_state:
     st.session_state.versions = []
+if 'pdf_name' not in st.session_state:
+    st.session_state.pdf_name = None
 
 # --- 側邊欄 ---
 st.sidebar.title("🛠️ 控制面板")
+
+# 增加監控：如果上傳了新的檔案，清空舊的 db 資料，強制更新
 uploaded_pdf = st.sidebar.file_uploader("1. 載入價格 PDF", type="pdf")
 
-if uploaded_pdf and st.session_state.db is None:
-    with st.spinner("解析 PDF 中..."):
-        db, versions = parse_pdf(uploaded_pdf)
-        st.session_state.db = db
-        st.session_state.versions = versions
-        st.sidebar.success("PDF 載入成功！")
+if uploaded_pdf is not None:
+    # 判斷是否為新檔案
+    if st.session_state.pdf_name != uploaded_pdf.name:
+        with st.spinner("偵測到新單價表，正在更新項目內容..."):
+            db, versions = parse_pdf(uploaded_pdf)
+            st.session_state.db = db
+            st.session_state.versions = versions
+            st.session_state.pdf_name = uploaded_pdf.name
+            st.sidebar.success(f"已更新為：{uploaded_pdf.name}")
+elif uploaded_pdf is None and st.session_state.db is not None:
+    # 如果移除檔案，則清空資料
+    st.session_state.db = None
+    st.session_state.versions = []
+    st.session_state.pdf_name = None
 
 # 下載範例檔
 template_csv = "教科書一覽表,,,,,,\n科目/年級,一年級,二年級,三年級,四年級,五年級,六年級\n國語,康軒,康軒,南一,康軒,南一,康軒\n數學,南一,南一,南一,南一,翰林,南一\n生活,翰林,翰林,,,,\n健康與體育,翰林,翰林,南一,康軒,南一,南一\n自然科學,,,南一,翰林,南一,翰林\n社會,,,康軒,康軒,南一,翰林\n英語,,,康軒,翰林,翰林,何嘉仁\n綜合活動,,,翰林,康軒,康軒,南一\n藝術,,,康軒,翰林,康軒,康軒\n"
@@ -121,13 +133,17 @@ col1, col2 = st.columns([1, 2])
 
 with col1:
     st.subheader("🔍 手動新增")
+    # 這裡的選單會自動根據 st.session_state.db 的變化而更新
     if st.session_state.db:
         grades = sorted(list(set([k[0] for k in st.session_state.db.keys()])))
         grade = st.selectbox("選擇年級", grades)
+        
         subjects = sorted(list(set([k[1] for k in st.session_state.db.keys() if k[0] == grade])), key=get_subject_weight)
         subject = st.selectbox("選擇科目", subjects)
+        
         vols = sorted(list(set([k[2] for k in st.session_state.db.keys() if k[0] == grade and k[1] == subject])))
         vol = st.selectbox("選擇冊別", vols)
+        
         version = st.radio("選擇版本", st.session_state.versions, horizontal=True)
         
         if st.button("➕ 加入清單"):
@@ -135,6 +151,8 @@ with col1:
             pb = res.get("課", {}).get(version, 0)
             pw = res.get("習", {}).get(version, 0)
             st.session_state.cart.append({"年級": f"{grade}年", "科目": subject, "版本": version, "冊別": vol, "課本": pb, "習作": pw, "小計": pb+pw})
+    else:
+        st.info("請先於左側上傳單價表 PDF 以顯示年級與科目選單。")
 
 with col2:
     st.subheader("📋 查詢清單")
@@ -145,7 +163,7 @@ with col2:
             st.session_state.cart = []
             st.rerun()
 
-# --- 匯出報表邏輯 (修正點) ---
+# --- 匯出報表邏輯 ---
 if st.session_state.cart:
     st.divider()
     st.subheader("📊 報表匯出")
@@ -160,13 +178,11 @@ if st.session_state.cart:
     writer = csv.writer(output)
     sorted_grades = sorted(grade_groups.keys())
     
-    # 寫入第一行：年級標題
     h_row = []
     for g in sorted_grades:
         h_row += [f"【{g}】", "", "", "", ""]
     writer.writerow(h_row)
 
-    # 寫入第二行：總計置頂 (修正關鍵處)
     total_row = []
     for g in sorted_grades:
         total_row += ["★年級總計", "", "", grade_totals[g], ""]
