@@ -100,7 +100,7 @@ if 'pdf_name' not in st.session_state:
 st.sidebar.title("🛠️ 控制面板")
 
 # 1. PDF 上傳
-uploaded_pdf = st.sidebar.file_uploader("1. 載入價格 PDF (國中小皆可)", type="pdf")
+uploaded_pdf = st.sidebar.file_uploader("1. 載入價格 PDF ", type="pdf")
 if uploaded_pdf:
     if uploaded_pdf.name != st.session_state.pdf_name:
         with st.spinner("正在解析 PDF (包含個位數修正邏輯)..."):
@@ -168,7 +168,7 @@ if uploaded_csv and st.session_state.db:
             st.sidebar.error(f"匯入發生錯誤：{e}")
 
 # --- 主介面 ---
-st.title("📚 教科書價格查詢系統 (修正版)")
+st.title("📚 教科書價格查詢系統 ")
 
 col1, col2 = st.columns([1, 2])
 
@@ -193,7 +193,7 @@ with col1:
             pw = res.get("習", {}).get(version, 0)
             st.session_state.cart.append({"年級": f"{grade}年", "科目": subject, "版本": version, "冊別": vol, "課本": pb, "習作": pw, "小計": pb+pw})
     else:
-        st.info("💡 請先從左側上傳價格 PDF。系統已優化康軒等個位數價格解析。")
+        st.info("💡 請先從左側上傳價格 PDF。 ")
 
 with col2:
     st.subheader("📋 查詢清單")
