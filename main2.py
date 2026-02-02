@@ -145,16 +145,21 @@ if uploaded_csv and st.session_state.db:
                     if g_zh in df.columns:
                         version = str(row[g_zh]).strip()
                         if version and version != "nan" and version != "":
-                            # 尋找冊別（優先找尋）
-                            vols = sorted(list(set([k[2] for k in st.session_state.db.keys() if k[0] == g_num and k[1] in subject])))
+                            # 尋找冊別（優化科目對應：例如 CSV 寫「英語」PDF 寫「英文」）
+                            matched_keys = [k for k in st.session_state.db.keys() if k[0] == g_num and (k[1] in subject or subject in k[1])]
+                            vols = sorted(list(set([k[2] for k in matched_keys])))
+                            
                             if vols:
                                 target_vol = vols[0]
-                                res = st.session_state.db.get((g_num, subject, target_vol), {})
+                                # 再次定位具體的科目名稱（以 PDF 中存在的為準）
+                                actual_subject = [k[1] for k in matched_keys if k[2] == target_vol][0]
+                                
+                                res = st.session_state.db.get((g_num, actual_subject, target_vol), {})
                                 pb = res.get("課", {}).get(version, 0)
                                 pw = res.get("習", {}).get(version, 0)
                                 if pb > 0 or pw > 0:
                                     st.session_state.cart.append({
-                                        "年級": f"{g_num}年", "科目": subject, "版本": version, 
+                                        "年級": f"{g_num}年", "科目": actual_subject, "版本": version, 
                                         "冊別": target_vol, "課本": pb, "習作": pw, "小計": pb+pw
                                     })
                                     items_added += 1
