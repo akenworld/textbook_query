@@ -115,7 +115,7 @@ template_csv = "教科書一覽表,,,,,,,,,\n科目/年級,一年級,二年級,�
 st.sidebar.download_button("📥 下載版本一覽表範例檔", data=template_csv.encode('utf-8-sig'), file_name="教科書版本一覽表(範例檔).csv", mime="text/csv")
 
 # 2. CSV 自動匯入
-uploaded_csv = st.sidebar.file_uploader("2. 匯入選用一覽表 (CSV)", type="csv")
+uploaded_csv = st.sidebar.file_uploader("2. 匯入版本一覽表 (CSV)", type="csv")
 if uploaded_csv and st.session_state.db:
     if st.sidebar.button("🚀 執行自動匯入"):
         try:
