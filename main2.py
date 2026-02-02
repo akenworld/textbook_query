@@ -110,9 +110,9 @@ if uploaded_pdf:
             st.session_state.pdf_name = uploaded_pdf.name
             st.sidebar.success(f"解析完成！共有 {len(db)} 筆資料項目")
 
-# 下載範例檔
-template_csv = "教科書一覽表,,,,,,\n科目/年級,一年級,二年級,三年級,四年級,五年級,六年級\n國語,康軒,康軒,南一,康軒,南一,康軒\n數學,南一,南一,南一,南一,翰林,南一\n"
-st.sidebar.download_button("📥 下載版本一覽表範例檔", data=template_csv.encode('utf-8-sig'), file_name="版本一覽表範例.csv", mime="text/csv")
+# 下載範例檔 (已更新為包含 1-9 年級的格式)
+template_csv = "教科書一覽表,,,,,,,,,\n科目/年級,一年級,二年級,三年級,四年級,五年級,六年級,七年級,八年級,九年級\n國語/國文,,,,,,,,,\n數學,,,,,,,,,\n生活,,,,,,,,,\n健康與體育,,,,,,,,,\n自然科學,,,,,,,,,\n社會,,,,,,,,,\n英語,,,,,,,,,\n綜合活動,,,,,,,,,\n藝術,,,,,,,,,\n"
+st.sidebar.download_button("📥 下載版本一覽表範例檔", data=template_csv.encode('utf-8-sig'), file_name="教科書版本一覽表(範例檔).csv", mime="text/csv")
 
 # 2. CSV 自動匯入
 uploaded_csv = st.sidebar.file_uploader("2. 匯入選用一覽表 (CSV)", type="csv")
@@ -138,20 +138,20 @@ if uploaded_csv and st.session_state.db:
             
             items_added = 0
             for _, row in df.iterrows():
-                subject = str(row[0]).strip()
-                if not subject or subject == "nan": continue
+                # 處理科目名稱比對 (移除斜線與空格)
+                subject_raw = str(row[0]).strip()
+                if not subject_raw or subject_raw == "nan": continue
                 
                 for g_zh, g_num in grade_cols.items():
                     if g_zh in df.columns:
                         version = str(row[g_zh]).strip()
                         if version and version != "nan" and version != "":
-                            # 尋找冊別（優化科目對應：例如 CSV 寫「英語」PDF 寫「英文」）
-                            matched_keys = [k for k in st.session_state.db.keys() if k[0] == g_num and (k[1] in subject or subject in k[1])]
+                            # 尋找冊別（模糊匹配科目名稱）
+                            matched_keys = [k for k in st.session_state.db.keys() if k[0] == g_num and (k[1] in subject_raw or subject_raw in k[1])]
                             vols = sorted(list(set([k[2] for k in matched_keys])))
                             
                             if vols:
                                 target_vol = vols[0]
-                                # 再次定位具體的科目名稱（以 PDF 中存在的為準）
                                 actual_subject = [k[1] for k in matched_keys if k[2] == target_vol][0]
                                 
                                 res = st.session_state.db.get((g_num, actual_subject, target_vol), {})
