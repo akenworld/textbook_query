@@ -78,48 +78,69 @@ if 'pdf_name' not in st.session_state:
 # --- 側邊欄 ---
 st.sidebar.title("🛠️ 控制面板")
 
-# 增加監測檔案名稱變動的邏輯
+# PDF 上傳與自動更新
 uploaded_pdf = st.sidebar.file_uploader("1. 載入價格 PDF", type="pdf")
-
 if uploaded_pdf:
-    # 如果上傳的文件與快取中的名稱不同，視為重新載入，重設資料庫
     if uploaded_pdf.name != st.session_state.pdf_name:
-        with st.spinner("偵測到新文件，重新解析 PDF 中..."):
+        with st.spinner("偵測到新價格表，重新解析中..."):
             db, versions = parse_pdf(uploaded_pdf)
             st.session_state.db = db
             st.session_state.versions = versions
             st.session_state.pdf_name = uploaded_pdf.name
-            st.sidebar.success(f"已更新資料庫：{uploaded_pdf.name}")
+            st.sidebar.success(f"已更新價格資料庫")
 
-# 下載範例檔
+# 下載範例檔功能
 template_csv = "教科書一覽表,,,,,,\n科目/年級,一年級,二年級,三年級,四年級,五年級,六年級\n國語,康軒,康軒,南一,康軒,南一,康軒\n數學,南一,南一,南一,南一,翰林,南一\n生活,翰林,翰林,,,,\n健康與體育,翰林,翰林,南一,康軒,南一,南一\n自然科學,,,南一,翰林,南一,翰林\n社會,,,康軒,康軒,南一,翰林\n英語,,,康軒,翰林,翰林,何嘉仁\n綜合活動,,,翰林,康軒,康軒,南一\n藝術,,,康軒,翰林,康軒,康軒\n"
-st.sidebar.download_button("📥 下載一覽表範例檔", data=template_csv.encode('utf-8-sig'), file_name="範例檔.csv", mime="text/csv")
+st.sidebar.download_button("📥 下載一覽表範例檔", data=template_csv.encode('utf-8-sig'), file_name="教科書版本一覽表(範例檔).csv", mime="text/csv")
 
-# 匯入一覽表
-uploaded_csv = st.sidebar.file_uploader("2. 匯入選用一覽表 (CSV)", type="csv")
+# 匯入一覽表 (不限檔名)
+uploaded_csv = st.sidebar.file_uploader("2. 匯入選用一覽表 (CSV)", type="csv", key="csv_uploader")
 if uploaded_csv and st.session_state.db:
     if st.sidebar.button("🚀 執行自動匯入"):
-        df = pd.read_csv(uploaded_csv, encoding='utf-8-sig', header=1)
-        grade_cols = {"一年級":"1", "二年級":"2", "三年級":"3", "四年級":"4", "五年級":"5", "六年級":"6"}
-        
-        for _, row in df.iterrows():
-            subject = str(row[0]).strip()
-            for g_zh, g_num in grade_cols.items():
-                if g_zh in df.columns:
-                    version = str(row[g_zh]).strip()
-                    if version and version != "nan" and version != "":
-                        vols = sorted(list(set([k[2] for k in st.session_state.db.keys() if k[0] == g_num and k[1] == subject])))
-                        if vols:
-                            target_vol = ""
-                            for v in vols:
-                                if str(int(g_num)*2) in v: target_vol = v; break
-                            if not target_vol: target_vol = vols[0]
-                            
-                            res = st.session_state.db.get((g_num, subject, target_vol), {})
-                            pb = res.get("課", {}).get(version, 0)
-                            pw = res.get("習", {}).get(version, 0)
-                            st.session_state.cart.append({"年級": f"{g_num}年", "科目": subject, "版本": version, "冊別": target_vol, "課本": pb, "習作": pw, "小計": pb+pw})
-        st.sidebar.success("匯入完成！")
+        try:
+            # 讀取 CSV，不論檔名為何
+            raw_data = uploaded_csv.getvalue().decode('utf-8-sig')
+            df_full = pd.read_csv(io.StringIO(raw_data))
+            
+            # 找出包含「年級」關鍵字的行作為標題行 (避免第一行校名干擾)
+            header_idx = 0
+            for i, row in df_full.iterrows():
+                if any("年級" in str(cell) for cell in row):
+                    header_idx = i
+                    break
+            
+            # 重新定位資料
+            df = pd.read_csv(io.StringIO(raw_data), header=header_idx + 1)
+            grade_cols = {"一年級":"1", "二年級":"2", "三年級":"3", "四年級":"4", "五年級":"5", "六年級":"6"}
+            
+            items_added = 0
+            for _, row in df.iterrows():
+                subject = str(row[0]).strip()
+                if not subject or subject == "nan": continue
+                
+                for g_zh, g_num in grade_cols.items():
+                    if g_zh in df.columns:
+                        version = str(row[g_zh]).strip()
+                        if version and version != "nan" and version != "":
+                            # 尋找對應冊別 (優先找該年級下學期雙數冊)
+                            vols = sorted(list(set([k[2] for k in st.session_state.db.keys() if k[0] == g_num and k[1] == subject])))
+                            if vols:
+                                target_vol = ""
+                                for v in vols:
+                                    if str(int(g_num)*2) in v: target_vol = v; break
+                                if not target_vol: target_vol = vols[0]
+                                
+                                res = st.session_state.db.get((g_num, subject, target_vol), {})
+                                pb = res.get("課", {}).get(version, 0)
+                                pw = res.get("習", {}).get(version, 0)
+                                st.session_state.cart.append({
+                                    "年級": f"{g_num}年", "科目": subject, "版本": version, 
+                                    "冊別": target_vol, "課本": pb, "習作": pw, "小計": pb+pw
+                                })
+                                items_added += 1
+            st.sidebar.success(f"匯入成功！已從「{uploaded_csv.name}」帶入 {items_added} 筆。")
+        except Exception as e:
+            st.sidebar.error(f"匯入時發生錯誤：{e}")
 
 # --- 主介面 ---
 st.title("📚 教科書價格查詢系統")
@@ -129,19 +150,12 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.subheader("🔍 手動新增")
     if st.session_state.db:
-        # 年級選項會根據 db 自動更新
         grades = sorted(list(set([k[0] for k in st.session_state.db.keys()])))
         grade = st.selectbox("選擇年級", grades)
-        
-        # 科目選項會根據選擇的年級從 db 動態抓取
         subjects = sorted(list(set([k[1] for k in st.session_state.db.keys() if k[0] == grade])), key=get_subject_weight)
         subject = st.selectbox("選擇科目", subjects)
-        
-        # 冊別選項同樣根據 db 動態抓取
         vols = sorted(list(set([k[2] for k in st.session_state.db.keys() if k[0] == grade and k[1] == subject])))
         vol = st.selectbox("選擇冊別", vols)
-        
-        # 版本會根據該 PDF 偵測到的出版社列出
         version = st.radio("選擇版本", st.session_state.versions, horizontal=True)
         
         if st.button("➕ 加入清單"):
@@ -161,7 +175,7 @@ with col2:
             st.session_state.cart = []
             st.rerun()
 
-# --- 匯出報表邏輯 ---
+# --- 報表匯出 ---
 if st.session_state.cart:
     st.divider()
     st.subheader("📊 報表匯出")
@@ -176,16 +190,14 @@ if st.session_state.cart:
     writer = csv.writer(output)
     sorted_grades = sorted(grade_groups.keys())
     
-    # 寫入第一行：年級標題
+    # 年級標題
     h_row = []
-    for g in sorted_grades:
-        h_row += [f"【{g}】", "", "", "", ""]
+    for g in sorted_grades: h_row += [f"【{g}】", "", "", "", ""]
     writer.writerow(h_row)
 
-    # 寫入第二行：總計置頂
+    # 總計置頂
     total_row = []
-    for g in sorted_grades:
-        total_row += ["★年級總計", "", "", grade_totals[g], ""]
+    for g in sorted_grades: total_row += ["★年級總計", "", "", grade_totals[g], ""]
     writer.writerow(total_row)
     writer.writerow([])
     
